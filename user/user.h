@@ -2,10 +2,10 @@ struct stat;
 struct rtcdate;
 
 // system calls
-int fork(void);
+int fork(void); //Fork returns in both the parent and the child. In the parent, fork returns the child¡¯s PID; in the child, fork returns zero
 int exit(int) __attribute__((noreturn));
 int wait(int*);
-int pipe(int*);
+int pipe(int*);  //Create a pipe, put read/write file descriptors in p[0] and p[1].
 int write(int, const void*, int);
 int read(int, void*, int);
 int close(int);

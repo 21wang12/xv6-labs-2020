@@ -4,4 +4,4 @@
 + Lab 1 is in __`util`__ branch
 + Lab 2 is in __`syscall`__ branch
 
-please run `git checkout [branch]` to switch
+please run `git checkout [branch]` to switch into different lab

@@ -255,6 +255,7 @@ growproc(int n)
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
+// TODO: Modify fork() (see kernel/proc.c) to copy the trace mask from the parent to the child process
 int
 fork(void)
 {

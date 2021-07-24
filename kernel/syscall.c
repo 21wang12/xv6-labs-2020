@@ -54,7 +54,7 @@ argraw(int n)
 }
 
 // Fetch the nth 32-bit system call argument.
-int
+int 
 argint(int n, int *ip)
 {
   *ip = argraw(n);
@@ -104,6 +104,8 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
+extern uint64 sys_trace(void);
+extern uint64 sys_sysinfo(void);
 
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -127,6 +129,35 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_trace]   sys_trace,
+[SYS_sysinfo] sys_sysinfo,
+};
+
+//add syscall names to index to
+static char* syscall_names[]={
+[SYS_fork]    "fork",
+[SYS_exit]    "exit",
+[SYS_wait]    "wait",
+[SYS_pipe]    "pipe",
+[SYS_read]    "read",
+[SYS_kill]    "kill",
+[SYS_exec]    "exec",
+[SYS_fstat]   "fstat",
+[SYS_chdir]   "chdir",
+[SYS_dup]     "dup",
+[SYS_getpid]  "getpid",
+[SYS_sbrk]    "sbrk",
+[SYS_sleep]   "sleep",
+[SYS_uptime]  "uptime",
+[SYS_open]    "open",
+[SYS_write]   "write",
+[SYS_mknod]   "mknod",
+[SYS_unlink]  "unlink",
+[SYS_link]    "link",
+[SYS_mkdir]   "mkdir",
+[SYS_close]   "close",
+[SYS_trace]   "trace",
+[SYS_sysinfo] "sysinfo",
 };
 
 void
@@ -142,5 +173,10 @@ syscall(void)
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
+  }
+  
+  // Print the trace output. If the system call's number is set in the mask. The line should contain the process id, the name of the system call and the return value
+  if((p->mask & (1<<num))){
+    printf("%d: syscall %s -> %d\n",p->pid,syscall_names[num],p->trapframe->a0);
   }
 }

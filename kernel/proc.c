@@ -85,6 +85,20 @@ allocpid() {
   return pid;
 }
 
+// Collect the number of processes whose state is not UNUSED.
+uint64 nproc(void){
+  struct proc *p;
+  uint64 cnt=0;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state != UNUSED){
+      cnt++;
+    }
+    release(&p->lock);
+  }
+  return cnt;
+}
+
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -255,7 +269,6 @@ growproc(int n)
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
-// TODO: Modify fork() (see kernel/proc.c) to copy the trace mask from the parent to the child process
 int
 fork(void)
 {
@@ -267,7 +280,8 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  //copy the trace mask from the parent to the child process
+  np->mask = p->mask;
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);

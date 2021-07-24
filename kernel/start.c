@@ -46,7 +46,7 @@ start()
   w_tp(id);
 
   // switch to supervisor mode and jump to main().
-  asm volatile("mret");
+  asm volatile("mret");       //This causes the program counter to change to main in main.c
 }
 
 // set up to receive timer interrupts in machine mode,

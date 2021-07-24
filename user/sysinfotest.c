@@ -98,7 +98,8 @@ void testproc() {
   
   sinfo(&info);
   nproc = info.nproc;
-
+  //printf("nproc = %d\ninfo.nproc=%d\n",nproc,info.nproc);
+  
   pid = fork();
   if(pid < 0){
     printf("sysinfotest: fork failed\n");

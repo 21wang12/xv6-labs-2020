@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -97,5 +98,30 @@ sys_uptime(void)
 }
 
 uint64 sys_trace(void){
+  if(argint(0, &myproc()->mask) < 0){
+    return -1;
+  }
+  return 0;
+}
+
+uint64 sys_sysinfo(void){
+  uint64 info;  //user pointer to struct sysinfo
+  struct sysinfo kernelinfo;
+  struct proc *p = myproc();
   
+  if(argaddr(0,&info) < 0){
+    return -1;
+  }
+
+  //collect the amount of free memory
+  kernelinfo.freemem = freemem();
+  
+  //collect the number of processes
+  kernelinfo.nproc = nproc();
+
+  //copy out
+  if(copyout(p->pagetable,info,(char *)&kernelinfo,sizeof(kernelinfo))<0){
+    return -1;
+  }
+  return 0;
 }

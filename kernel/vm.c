@@ -452,32 +452,23 @@ void vmprint(pagetable_t pagetable){
     //Don't print PTEs that are not valid
     if(pte & PTE_V){
       // this PTE points to a lower-level page table
-
       uint64 child = PTE2PA(pte);
-      printf("..%d:pte %p pa %p",i,pte,child);
-      //vmprint((pagetable_t) child);
+      printf("..%d: pte %p pa %p\n",i,pte,child);
+
+      for(int j = 0; j < 512; j++){
+        pte_t pte2 = ((pagetable_t)child)[j];
+        if(pte2 & PTE_V){
+          uint64 child2 = PTE2PA(pte2);
+          printf(".. ..%d: pte %p pa %p\n",j,pte2,child2);
+          for(int k = 0; k < 512; k++){
+            pte_t pte3 = ((pagetable_t)child2)[k];
+            if(pte3 & PTE_V){
+              uint64 child3 = PTE2PA(pte3);
+              printf(".. .. ..%d: pte %p pa %p\n",k,pte3,child3);
+            }
+          }
+        }
+      }
     }
   }
 }
-
-/**
- * 
- * 
-void
-freewalk(pagetable_t pagetable)
-{
-  // there are 2^9 = 512 PTEs in a page table.
-  for(int i = 0; i < 512; i++){
-    pte_t pte = pagetable[i];
-    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
-      // this PTE points to a lower-level page table.
-      uint64 child = PTE2PA(pte);
-      freewalk((pagetable_t)child);
-      pagetable[i] = 0;
-    } else if(pte & PTE_V){
-      panic("freewalk: leaf");
-    }
-  }
-  kfree((void*)pagetable);
-}
- */

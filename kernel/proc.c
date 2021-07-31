@@ -502,7 +502,6 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  // Remenber the initial satp, which reffer to the kernel pagetable
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.

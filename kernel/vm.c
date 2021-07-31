@@ -48,38 +48,30 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
-void uvmmap(pagetable_t pagetable,uint64 va,uint64 pa, uint64 sz,int perm){
-  if(mappages(pagetable,va,sz,pa,perm) != 0){
-    panic("uvmmap");
-  }
+// add a mapping to the specific page table.
+void uvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm){
+    if (mappages(pagetable, va, sz, pa, perm) != 0)
+      panic("proc_kvmmap");
 }
 
 pagetable_t _kvminit(){
   
-  pagetable_t kernel_pagetable = (pagetable_t) uvmcreate();
-  if(kernel_pagetable == 0) return 0;
+  pagetable_t kernel_pagetable = (pagetable_t) kalloc();
+  memset(kernel_pagetable, 0, PGSIZE);
 
-  // uart registers
-  uvmmap(kernel_pagetable,UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
-  // virtio mmio disk interface
-  uvmmap(kernel_pagetable,VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
-  // CLINT
-  uvmmap(kernel_pagetable,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
-  // PLIC
-  uvmmap(kernel_pagetable,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
 
-  // map kernel text executable and read-only.
-  uvmmap(kernel_pagetable,KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  uvmmap(kernel_pagetable, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
-  // map kernel data and the physical RAM we'll make use of.
-  uvmmap(kernel_pagetable,(uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  uvmmap(kernel_pagetable, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
-  // map the trampoline for trap entry/exit to
-  // the highest virtual address in the kernel.
-  uvmmap(kernel_pagetable,TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+  uvmmap(kernel_pagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
   return kernel_pagetable;
 }
@@ -95,6 +87,12 @@ kvminithart()
   sfence_vma();
 }
 
+void
+_kvminithart(pagetable_t kpagetable)
+{
+  w_satp(MAKE_SATP(kpagetable));
+  sfence_vma();
+}
 // Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page-table pages.
@@ -479,6 +477,8 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   }
 }
 
+
+// Prints the contents of a page table
 void vmprint(pagetable_t pagetable){
   int i;
   //The first line displays the argument to vmprint

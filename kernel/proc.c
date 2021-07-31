@@ -26,20 +26,9 @@ void
 procinit(void)
 {
   struct proc *p;
-  
   initlock(&pid_lock, "nextpid");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
   }
   kvminithart();
 }
@@ -121,6 +110,29 @@ found:
     return 0;
   }
 
+  // An kernel page table
+  p->kpagetable = _kvminit();
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+
+  
+  mappages(p->kpagetable,p->kstack,PGSIZE,PTE2PA(p->kstack), PTE_R | PTE_W);
+
+  // Allocate a page for the process's kernel stack.
+  // Map it high in memory, followed by an invalid
+  // guard page.
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
+  // Make sure that each process's kernel page table has a mapping for that process's kernel stack
+  uvmmap(p->kpagetable,va,(uint64)pa,PGSIZE,PTE_R|PTE_W);
+  
+  p->kstack = va;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -133,6 +145,24 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+
+//recursive free page-table pages
+void
+proc_freekpagetable(pagetable_t pagetable)
+{
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      // this PTE points to a lower-level page table.
+      uint64 child = PTE2PA(pte);
+      proc_freekpagetable((pagetable_t)child);
+      pagetable[i] = 0;
+    } 
+  }
+  kfree((void*)pagetable);
+}
+
 static void
 freeproc(struct proc *p)
 {
@@ -142,6 +172,18 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  //TODO: free va kstack's physical memory
+  if(p->kstack){
+    uvmunmap(p->kpagetable,p->kstack,1,1);
+  }
+  p->kstack = 0;
+  
+  // TODO: Free a process's kernel page table in freeproc
+  // You'll need a way to free a page table without also freeing the leaf physical memory pages.
+  if(p->kpagetable){
+    proc_freekpagetable(p->kpagetable);
+  }
+  p->kpagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -458,7 +500,7 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
+  uint64 init_satp = r_satp();
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
@@ -473,6 +515,10 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        // load the process's kernel page table into the core's satp register
+        // inspired by kvminithart()
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -485,6 +531,9 @@ scheduler(void)
     }
 #if !defined (LAB_FS)
     if(found == 0) {
+      // scheduler() should use kernel_pagetable when no process is running
+      w_satp(init_satp);
+      sfence_vma();
       intr_on();
       asm volatile("wfi");
     }

@@ -965,7 +965,6 @@ reparent2(char *s)
     }
     wait(0);
   }
-
   exit(0);
 }
 

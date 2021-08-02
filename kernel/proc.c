@@ -21,7 +21,7 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
-// initialize the proc table at boot time.
+// Initialize the proc table at boot time.
 void
 procinit(void)
 {
@@ -31,7 +31,6 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
   }
-  //kvminithart();
 }
 
 // Must be called with interrupts disabled,
@@ -143,21 +142,38 @@ found:
 // including user pages.
 // p->lock must be held.
 
-//recursive free page-table pages without also freeing the leaf physical memory pages
-void
-proc_freekpagetable(pagetable_t pagetable)
-{
+// Recursive free page-table pages without also freeing the leaf physical memory pages.
+// Inpired by proc_freepagetable()
+void proc_freekpagetable(pagetable_t pagetable) {
   // there are 2^9 = 512 PTEs in a page table.
-  for(int i = 0; i < 512; i++){
+  // for(int i = 0; i < 512; i++){
+  //   pte_t pte = pagetable[i];
+  //   // (pte & (PTE_R|PTE_W|PTE_X)) == 0 make sure don't touch the leaf physical memory,
+  //   // which promise only free page-table pages
+  //   if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+  //     // this PTE points to a lower-level page table.
+  //     uint64 child = PTE2PA(pte);
+  //     proc_freekpagetable((pagetable_t)child);
+  //     pagetable[i] = 0;
+  //   } else if (pte & PTE_V) { //Must consider this conditino
+  //     pagetable[i] = 0;
+  //   }
+  // }
+  // kfree((void*)pagetable);
+
+  for(int i = 0; i <512; i++){
     pte_t pte = pagetable[i];
-    // (pte & (PTE_R|PTE_W|PTE_X)) == 0 make sure don't touch the leaf physical memory,
-    // which promise only free page-table pages
-    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
-      // this PTE points to a lower-level page table.
+    if(pte & PTE_V){
       uint64 child = PTE2PA(pte);
-      proc_freekpagetable((pagetable_t)child);
-      pagetable[i] = 0;
-    } else if (pte & PTE_V) { //Must consider this conditino
+      for(int j = 0; j < 512;j++){
+        pte_t pte2 = ((pagetable_t)child)[j];
+        if(pte2 & PTE_V){
+          uint64 child2 = PTE2PA(pte2);
+          kfree((void*)child2);
+          ((pagetable_t)child)[j] = 0;
+        }
+      }
+      kfree((void*)child);
       pagetable[i] = 0;
     }
   }
@@ -197,17 +213,15 @@ freeproc(struct proc *p)
 }
 
 // Create a user page table for a given process,
-// with no user memory, but with trampoline pages.
+// with no user memory, but with trampoline pages
 pagetable_t
 proc_pagetable(struct proc *p)
 {
   pagetable_t pagetable;
-
   // An empty page table.
   pagetable = uvmcreate();
   if(pagetable == 0)
     return 0;
-
   // map the trampoline code (for system call return)
   // at the highest user virtual address.
   // only the supervisor uses it, on the way
@@ -217,7 +231,6 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
-
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
@@ -225,12 +238,11 @@ proc_pagetable(struct proc *p)
     uvmfree(pagetable, 0);
     return 0;
   }
-
   return pagetable;
 }
 
 // Free a process's page table, and free the
-// physical memory it refers to.
+// physical memory it refers to
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
@@ -274,6 +286,9 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  //change the process's kernel page table
+  proc_addmapping(p,0,p->sz);
+
   release(&p->lock);
 }
 
@@ -287,12 +302,21 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if(sz+n > PLIC){
+      return -1;
+    }
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    
+    proc_addmapping(p,sz-n,sz);
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    if(sz != p->sz){
+      uvmunmap(p->kpagetable,PGROUNDUP(sz),(PGROUNDUP(p->sz) - PGROUNDUP(sz))/PGSIZE,0);
+    }
   }
+  _kvminithart(p->kpagetable);
   p->sz = sz;
   return 0;
 }
@@ -338,6 +362,9 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+
+  //change the process's kernel page table
+  proc_addmapping(np,0,np->sz);
 
   release(&np->lock);
 
@@ -745,3 +772,63 @@ procdump(void)
     printf("\n");
   }
 }
+
+// Add mappings for user addresses to process's kernel page table
+void proc_addmapping(struct proc* p, uint64 begin,uint64 end){
+  uint64 va,pa,perm;
+  pte_t *pte,*kpte;
+
+  //prevent user processes from growing larger than the PLIC address
+  // if(p->sz >= PLIC){
+  //   panic("proc_addmapping: PLIC limit");
+  // }
+
+  //map user process va from 0 to p->sz in kernel address space
+  //user address space: from 0 to p->sz
+  //use walk() find user process pte
+  //use PTE2PA(pte) find pa
+  //map pa to kpagetable
+  for(va = PGROUNDUP(begin); va < end; va+=PGSIZE){
+    //add PTE_U to perm
+    if((pte = walk(p->pagetable,va,0)) == 0){
+      panic("proc_addmapping: pte walk fail");
+    }
+    if((kpte = walk(p->kpagetable,va,1)) == 0){
+      panic("proc_addmapping: kpte walk fail");
+    }
+
+    perm = PTE_FLAGS(*pte) & (~PTE_U);
+    pa = PTE2PA(*pte);
+    *kpte = PA2PTE(pa)|perm;
+
+    //TODO: this will cause "pannic: remap",
+    // so we should write a new function like mappages()
+    // if(mappages(p->kpagetable,va,PGSIZE,pa,perm) == -1){
+    //   panic("proc_addmapping: mappages fail");
+    // }
+  }
+}
+
+/*
+int
+mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  uint64 a, last;
+  pte_t *pte;
+
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
+  for(;;){
+    if((pte = walk(pagetable, a, 1)) == 0)
+      return -1;
+    if(*pte & PTE_V)
+      panic("remap");
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+*/

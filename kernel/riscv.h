@@ -323,8 +323,8 @@ sfence_vma()
 #define PGSIZE 4096 // bytes per page
 #define PGSHIFT 12  // bits of offset within a page
 
-#define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))
-#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))
+#define PGROUNDUP(sz)  (((sz)+PGSIZE-1) & ~(PGSIZE-1))  // add 1 to the 13th bit if any bit of the lowest 12 bits been set 
+#define PGROUNDDOWN(a) (((a)) & ~(PGSIZE-1))    // set the lowest 12 bits to 0, which is the offset in the page
 
 #define PTE_V (1L << 0) // valid
 #define PTE_R (1L << 1)

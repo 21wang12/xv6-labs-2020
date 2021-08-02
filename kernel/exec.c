@@ -118,8 +118,10 @@ exec(char *path, char **argv)
 
   //add vmprint
   if(p->pid == 1){
-    vmprint(p->pagetable);
+    vmprint(p->kpagetable);
   }
+  //change the process's kernel page table
+  proc_addmapping(p,0,p->sz);
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

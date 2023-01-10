@@ -11,3 +11,8 @@ please run `git checkout [branch]` to switch into different lab. for example:
 cd xv6-labs-2020
 git checkout util
 ```
+
+# MISC
++ Fix boot on newer qemu: https://github.com/mit-pdos/xv6-riscv/pull/62/files
++ Course webpage: https://pdos.csail.mit.edu/6.1810/2022/
++ Environment setup: https://pdos.csail.mit.edu/6.1810/2022/tools.html
